@@ -1,0 +1,48 @@
+{
+    "domain": "boa.local",
+    "DistDomain": "DC=boa,DC=local",
+    "ComputersOU":"OU=Computers,OU=_ROOT,DC=boa,DC=local",
+    "UsersOU":"OU=Users,OU=_ROOT,DC=boa,DC=local",
+    "userGroupOU": "OU=User groups,OU=Security Groups,OU=_ROOT,DC=boa,DC=local",
+    "userGroupNames": [
+        "TestGroup1",
+        "TestGroup2",
+        "TestGroup3",
+        "TestGroup4",
+        "TestGroup5",
+        "TestGroup6",
+        "TestGroup7",
+        "TestGroup8",
+        "TestGroup9",
+        "TestGroup10"
+    ],
+    
+    "userType": {
+        "admin": {
+            "OU":"OU=Administrators,OU=Users,OU=_ROOT,DC=boa,DC=local",
+            "pswLength":14,
+            "changePswAtLogon":1,
+            "defaultGroups":[
+                "Domain Admins"
+            ]
+        },
+        "strong":{
+            "OU":"OU=Strong users,OU=Users,OU=_ROOT,DC=boa,DC=local",
+            "pswLength":10,
+            "expirationDate":365,
+            "changePswAtLogon":1,
+            "defaultGroups":[
+                "StrongUsers"
+            ]
+        },
+        "weak":{
+            "OU":"OU=Weak users,OU=Users,OU=_ROOT,DC=boa,DC=local",
+            "changePswAtLogon":0,
+            "defaultGroups":[
+                "WeakUsers"
+            ]
+        }
+
+    }
+}
+    
