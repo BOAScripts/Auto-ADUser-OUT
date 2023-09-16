@@ -6,13 +6,29 @@ Switches
     -Reset  : -Purge then -Create.
 #>
 
+# PARAMETERS
+Param(
+    [ValidateSet('Create','Delete','Reset')]$Action,
+    [switch]$help
+)
 # VARS
 ## Static
+$HelpTxt = @'
+Purpose: Setup my AD structure.
+Switches
+    -Create : Creation of OU/Groups/Users definied in ./data/* files.
+    -Delete : Purge the AD of created entries (OU/Groups/Users)
+    -Reset  : -Delete then -Create.
+'@
+if ($help){
+    Write-Host $HelpTxt
+}
+
 
 ## External content
-$OUsList = Get-Content "./data/OU-Definition.txt"
-$model = Get-Content "./data/model.json" | ConvertFrom-Json
-$allNames = Get-Content "./data/1000names.csv" | ConvertFrom-Csv
+$modelPath = "./data/model.json"
+$model = Get-Content $modelPath | ConvertFrom-Json
+$Tnames = [System.Collections.ArrayList](Get-Content "./data/1000simpleNames.csv" | ConvertFrom-Csv -Delimiter ";")
 
 ## Output files
 $outPath = "./data/out/"
@@ -44,20 +60,324 @@ Function Get-NewPassword([int32]$Nbr,[array]$AllowedChars){
     return $sPsw,$DefinitelyNotAPassword
 }
 
+# Return Distinguished name for domain and ROOT ou
+function get-DomainNRoot($domain,$RootOUName){
+    $domainDistName = ""
+    foreach ($i in $domain.Split('.')){
+        $sSub = "DC=$i,"
+        $domainDistName += $sSub
+    }
+    $domainDistName = $domainDistName.Substring(0,$domainDistName.Length-1)
+    $RootDistName = "OU=$RootOUName,$domainDistName"
+
+    return $domainDistName, $RootDistName
+}
+
+# Set-OUs -OUPaths $model.CustomOUs -DC $domainDistName -RootOUName $model.RootOUName -Delete
+Function Set-OUs([array]$OUPaths,[string]$DC,[string]$RootOUName,[switch]$delete){
+    $OUs = @("$RootOUName/$DC")
+    $OUIdentities = @()
+    # Building OUs array ("OUName"/"OUPath")
+    foreach ($ou in $OUPaths){
+        $splitted = $ou.Split('/')
+        $ouname = $splitted[$splitted.Length-1]
+        $oupath = $DC
+
+        if ($splitted.Length -gt 1){
+            for($i=0; $i -lt ($splitted.Length -1); $i++){
+                $oupath = "OU=" + $splitted[$i] + "," + $oupath
+            }
+        }
+        $OUs += "$ouname/$oupath"
+    }
+    # OU creation or deletion
+    if(!$Delete){
+        foreach($ou in $OUs){
+            $ouname,$oupath = $ou.Split('/')[0],$ou.Split('/')[1]
+            $ouIdentity = "OU=$ouname,$oupath"
+            try {
+                Write-Host "[+] Creating OU=$ouname,$oupath"
+                #New-ADOrganizationalUnit -Name "$ouname" -Path "$oupath" -ProtectedFromAccidentalDeletion $false
+                $OUIdentities += $ouIdentity
+            }
+            catch {
+                $msg = $_
+                Write-Host "[!] Error creating $ouIdentity" -ForegroundColor Red
+                Write-Host $msg -ForegroundColor Red
+            } 
+        }  
+        # SHOULN'T BE HERE ??    
+        return $OUIdentities
+    }
+    else {
+        [array]::Reverse($OUs)
+        foreach($ou in $OUs){
+            $ouname,$oupath = $ou.Split('/')[0],$ou.Split('/')[1]
+            $ouIdentity = "OU=$ouname,$oupath"
+            try {
+                Write-Host "[-] Deleting $ouIdentity"
+                #Remove-ADOrganizationalUnit -Identity $ouIdentity -Recursive -Confirm:$false
+            }
+            catch {
+                $msg = $_
+                Write-Host "[!] Error deleting $ouIdentity" -ForegroundColor Red
+                Write-Host $msg -ForegroundColor Red
+            }   
+        }
+    }
+    return $OUIdentities
+}
+
+function set-ADGroups ([array]$groupNames,[string]$userGroupsOU){
+    foreach ($group in $groupNames){
+        try {
+            Write-Host "    [+] Creating $group"
+            New-ADGroup -Name $group -GroupCategory Security -GroupScope DomainLocal -Path $userGroupsOU
+        }
+        catch{
+            $msg= $_
+            Write-Host "    [!] Error creating $group" -ForegroundColor Red
+            Write-Host $msg -ForegroundColor Red
+        }
+    }
+    
+}
+
+# To use with the model.json.userExpirations, return a hashtable with "ExpirationType":"ExpirationTypeDate"
+function Get-Times($userExpirations) {
+    $Now = Get-Date
+    $retVal = @{}
+    foreach($item in $userExpirations.PSObject.Properties){
+        $userTypeName, $userTypeExpDate = $item.Name, $item.Value
+        $targetDate = $Now
+
+        if ($userTypeExpDate -ne '$false'){
+            foreach ($splitVal in $userTypeExpDate.Split(',')){
+                $iValue, $sDateUnit = $splitVal.Split('-')[0],$splitVal.Split('-')[1]
+                if ($sDateUnit -eq "Day"){
+                    $targetDate = $targetDate.AddDays($iValue)
+                }
+                elseif ($sDateUnit -eq "Month"){
+                    $targetDate = $targetDate.AddMonths($iValue)
+                }
+                elseif ($sDateUnit -eq "Year"){
+                    $targetDate = $targetDate.AddYears($iValue)
+                }
+                else {
+                    Write-Host "[!] $sDateUnit : not detected by the script - only ('Day','Month','Year') singular, not case sensitive" -ForegroundColor Red
+                }
+            }
+            $targetDate = "{0:dd/MM/yyyy}" -f $targetDate
+        }
+        else {
+            $targetDate = $false
+        }
+        $retVal.Add("$userTypeName","$targetDate")
+        # Write-Host "[i] $userTypeName users will have an expiration date set to:$targetDate"
+    }
+    return $retVal
+}
+
+# Active or Expired user creation, return SAM
+function set-NewADUser($domain, $destOU, $userNames, $groups, $expDate,$sPsw , [switch]$expired) {
+    # define default values // Sanitize those values in a PROD env.
+    $displayName = $userNames.firstName + " " + $userNames.lastName
+    $SAM = ($userNames.firstName + "." + $userNames.lastName).toLower()
+    $UPN = $SAM + "@" + $domain
+    # Active user
+    if (!$expired){
+        # Expiration date is well defined
+        if($expDate -ne $false){
+            try {
+                 # New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate $expDate -ChangePasswordAtLogon $true -Enabled $true
+                 Write-Host "   [+] Creating user :$UPN - $expDate" -ForegroundColor Blue
+            }
+            catch {
+                $msg = $_
+                Write-Host "[!] Error creating Active User (expDate defined): $SAM " -ForegroundColor Red
+                Write-Host $msg -ForegroundColor Red
+            }
+        }
+        # Expiration date set to $false
+        else{
+            try {
+                 # New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -ChangePasswordAtLogon $true -Enabled $true
+                 Write-Host "   [+] Creating user :$UPN - $expDate" -ForegroundColor Blue
+            }
+            catch {
+                $msg = $_
+                Write-Host "[!] Error creating Active User (expDate not defined): $SAM" -ForegroundColor Red
+                Write-Host $msg -ForegroundColor Red
+            }
+        }
+
+    }
+    # Expired user (not disabled as AD doesn't disabled an expired user)
+    else{
+        try {
+            # New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate (Get-Date) -Enabled $true
+            Write-Host "   [+] Creating DISABLED user :$UPN" -ForegroundColor Yellow
+        }
+        catch {
+            $msg = $_
+            Write-Host "[!] Error creating Expired User: $SAM" -ForegroundColor Red
+            Write-Host $msg -ForegroundColor Red
+        }
+
+    }
+    # Add user to his groups
+    foreach($group in $groups){
+        try {
+             # Add-ADGroupMember -Identity $group -Members $SAM
+             Write-Host "       [+] Adding user :$UPN to $group" -ForegroundColor DarkBlue
+        }
+        catch {
+            $msg = $_
+            Write-Host "[!] Error setting $SAM in $group :" -ForegroundColor Red
+            Write-Host $msg -ForegroundColor Red
+        }
+    }
+    return $SAM
+
+}
+
 # ---------------------
 # Zhu-li, do the thing:
 # ---------------------
 
+# Define default values
+$userOUs = @()
+$charlist = Get-CharsList
+$domainDistName, $RootDistName = get-DomainNRoot -domain $model.domain -RootOUName $model.RootOUName
+$expDefinitions = Get-Times($model.userExpirationTypes)
+
 # Check AD
-## Making sure the user / computers are created in the correct default/custom location
-redircmp $model.ComputersOU
-redirusr $model.UsersOU
 
-# -Create, -Purge or -Reset ?
+# -Create, -Delete or -Reset ?
+if ($Action -eq 'Create'){
+    Write-Host "[+] Creating AD Structure following $modelPath" -ForegroundColor Green
+    # OUs
+    Write-Host "[+] OUs" -ForegroundColor Green
+    $allOUs = Set-OUs -OUPaths $model.CustomOUs -DC $model.DistNameDomain
+    foreach($ou in $allOUs){
+        if ($ou -like "*user*" -and $ou -notlike "*Security groups*" -and $ou -notlike "*WAITING*" -and $ou -notlike "*DISABLED*"){
+            $userOUs += $ou
+        }
+    }
+    # Security Groups 
+    Write-Host "[+] Security groups" -ForegroundColor Green
+    set-ADGroups -groupNames $model.userGroupNames -userGroupsOU $model.userGroupOU
+    # Users
+    Write-Host "[+] Users:" -ForegroundColor Green
+    foreach($expType in $expDefinitions.Keys){
+        Write-Host "[i] Processing $expType, expiration date is: $($expDefinitions.$expType)" -ForegroundColor Yellow
+        foreach ($userOU in $userOUs){
+            if ($userOU -like "*$expType*"){
+                # Create n Active users with the definied expiration date
+                for($i=0; $i -lt $model.activeUsersPerOU; $i++){
+                    ## Retrieve a random username from the list and pop it out
+                    $user = Get-Random -InputObject $Tnames
+                    $Tnames.Remove($user)
+                    ## Get a random set of groups (between 1 and 3)
+                    $groups = @((Get-Random -InputObject $model.userGroupNames -Count (Get-Random -InputObject (1..3) -Count 1)))
+                    ## Get user psw 
+                    $sPsw, $psw = Get-NewPassword -Nbr 12 -AllowedChars $charlist
+                    ## Create user
+                    $SAM = set-NewADUser -domain $model.domain -destOU $userOU -userNames $user -groups $groups -expDate $($expDefinitions.$expType) -sPsw $sPsw
+                    ## Append new user:psw to logfile
+                    Out-File -FilePath $logs -InputObject ($SAM + ":" + $psw) -Append
+            
+                }
+                # Create n Expired users with an expiration date as of now.
+                for($i=0; $i -lt $model.expiredUsersPerOU; $i++){
+                    ## Retrieve a random username from the list and pop it out
+                    $user = Get-Random -InputObject $Tnames
+                    $Tnames.Remove($user)
+                    ## Get user psw
+                    $sPsw, $psw = Get-NewPassword -Nbr 12 -AllowedChars $charlist
+                    ## Get a random set of groups (between 1 &nd 3)
+                    $groups = @((Get-Random -InputObject $model.userGroupNames -Count (Get-Random -InputObject (1..3) -Count 1)))
+                    ## Create user
+                    $SAM = set-NewADUser -domain $model.domain -destOU $userOU -userNames $user -groups $groups -sPsw $sPsw -expired
+                    ## Append new user:psw to logfile
+                    Out-File -FilePath $logs -InputObject ($SAM + ":" + $psw) -Append
+                       
+                }
+            }
+        }
+    }
+}
 
-# OU
+elseif ($Action -eq 'Delete') {
+    # Recursive delete _ROOT OU (everything unprotected from accidental deletion)
+    Write-Host "[-] Deleting _ROOT recursively" -ForegroundColor Blue
+    Set-OUs -OUPaths $model.CustomOUs -DC $model.DistNameDomain -delete
+}
 
-# Security Groups 
+elseif ($Action -eq 'Reset') {
+    Write-Host "[..] Resetting AD Structure following ./data/model.json" -ForegroundColor Yellow
+    # 1. Delete
+    ## Recusrive OU deletion
+    Write-Host "[-] Deleting _ROOT OU recursively" -ForegroundColor Blue
+    $allOUs = Set-OUs -OUPaths $model.CustomOUs -DC $model.DistNameDomain -delete
 
-# Users
+    # 2. Create
+    Write-Host "[+] Creating AD Structure following $modelPath" -ForegroundColor Green
+    # OUs
+    Write-Host "[+] OUs" -ForegroundColor Green
+    $allOUs = Set-OUs -OUPaths $model.CustomOUs -DC $model.DistNameDomain
+    foreach($ou in $allOUs){
+        if ($ou -like "*user*" -and $ou -notlike "*Security groups*" -and $ou -notlike "*WAITING*" -and $ou -notlike "*DISABLED*"){
+            $userOUs += $ou
+        }
+    }
+    # Security Groups 
+    Write-Host "[+] Security groups" -ForegroundColor Green
+    set-ADGroups -groupNames $model.userGroupNames -userGroupsOU $model.userGroupOU
+    # Users
+    Write-Host "[+] Users:" -ForegroundColor Green
+    foreach($expType in $expDefinitions.Keys){
+        Write-Host "[i] Processing $expType, expiration date is: $($expDefinitions.$expType)" -ForegroundColor Yellow
+        foreach ($userOU in $userOUs){
+            if ($userOU -like "*$expType*"){
+                # Create n Active users with the definied expiration date
+                for($i=0; $i -lt $model.activeUsersPerOU; $i++){
+                    ## Retrieve a random username from the list and pop it out
+                    $user = Get-Random -InputObject $Tnames
+                    $Tnames.Remove($user)
+                    ## Get a random set of groups (between 1 and 3)
+                    $groups = @((Get-Random -InputObject $model.userGroupNames -Count (Get-Random -InputObject (1..3) -Count 1)))
+                    ## Get user psw 
+                    $sPsw, $psw = Get-NewPassword -Nbr 12 -AllowedChars $charlist
+                    ## Create user
+                    $SAM = set-NewADUser -domain $model.domain -destOU $userOU -userNames $user -groups $groups -expDate $($expDefinitions.$expType) -sPsw $sPsw
+                    ## Append new user:psw to logfile
+                    Out-File -FilePath $logs -InputObject ($SAM + ":" + $psw) -Append
+            
+                }
+                # Create n Expired users with an expiration date as of now.
+                for($i=0; $i -lt $model.expiredUsersPerOU; $i++){
+                    ## Retrieve a random username from the list and pop it out
+                    $user = Get-Random -InputObject $Tnames
+                    $Tnames.Remove($user)
+                    ## Get user psw
+                    $sPsw, $psw = Get-NewPassword -Nbr 12 -AllowedChars $charlist
+                    ## Get a random set of groups (between 1 &nd 3)
+                    $groups = @((Get-Random -InputObject $model.userGroupNames -Count (Get-Random -InputObject (1..3) -Count 1)))
+                    ## Create user
+                    $SAM = set-NewADUser -domain $model.domain -destOU $userOU -userNames $user -groups $groups -sPsw $sPsw -expired
+                    ## Append new user:psw to logfile
+                    Out-File -FilePath $logs -InputObject ($SAM + ":" + $psw) -Append
+                       
+                }
+            }
+        }
+    }
+}
+
+else{
+    Write-Host "[!] No paremeter: see -help"
+}
+
+
 
