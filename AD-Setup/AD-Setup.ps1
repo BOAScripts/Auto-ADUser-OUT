@@ -167,7 +167,7 @@ function Get-Times($userExpirations) {
                     Write-Host "[!] $sDateUnit : not detected by the script - only ('Day','Month','Year') singular, not case sensitive" -ForegroundColor Red
                 }
             }
-            $targetDate = "{0:dd/MM/yyyy}" -f $targetDate
+            $targetDate = Get-Date -Date ("{0:dd/MM/yyyy}" -f $targetDate)
         }
         else {
             $targetDate = $false
