@@ -182,7 +182,7 @@ function Get-Times($userExpirations) {
 function set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {    
     # Get a random name from .csv and remove it from the list
     $userNames = Get-Random -InputObject $Tnames
-    $Tnames.Remove($user)
+    $Tnames.Remove($userNames)
     # Get a random set of groups (between 1 and 3)
     $groups = @((Get-Random -InputObject $model.userGroupNames -Count (Get-Random -InputObject (1..3) -Count 1)))
     # Get a random description
