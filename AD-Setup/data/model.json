@@ -11,8 +11,8 @@
         "_ROOT/Security groups/Computer groups",
         "_ROOT/Users",
         "_ROOT/Users/External users",
-        "_ROOT/Users/External users/Consultants OU 1",
-        "_ROOT/Users/External users/Consultants OU 2",
+        "_ROOT/Users/External users/Consultants 1",
+        "_ROOT/Users/External users/Consultants 2",
         "_ROOT/Users/Internal users",
         "_ROOT/Users/Internal users/Finance",
         "_ROOT/Users/Internal users/Finance/Managers",
@@ -33,17 +33,17 @@
         "ICT",
         "Sales"
     ],
-    "Additional Desc":[
-        "Random desc. 1",
-        "Random desc. 2",
-        "Random desc. 3",
-        "Random desc. 4",
-        "Random desc. 5",
-        "Random desc. 6",
-        "Random desc. 7",
-        "Random desc. 8",
-        "Random desc. 9",
-        "Random desc. 10"
+    "AdditionalDesc":[
+        "🐞",
+        "🦄",
+        "👺",
+        "🐺",
+        "🐭",
+        "🐼",
+        "🐔",
+        "🐲",
+        "🐳",
+        "🦩"
     ],
     "userGroupOU": "OU=User groups,OU=Security Groups,OU=_ROOT,DC=boa,DC=local",
     "userGroupNames": [

@@ -97,7 +97,7 @@ Function Set-OUs([array]$OUPaths,[string]$DC,[string]$RootOUName,[switch]$delete
             $ouIdentity = "OU=$ouname,$oupath"
             try {
                 Write-Host "    [+] Creating OU=$ouname,$oupath"
-                #New-ADOrganizationalUnit -Name "$ouname" -Path "$oupath" -ProtectedFromAccidentalDeletion $false
+                New-ADOrganizationalUnit -Name "$ouname" -Path "$oupath" -ProtectedFromAccidentalDeletion $false
                 $OUIdentities += $ouIdentity
             }
             catch {
@@ -116,7 +116,7 @@ Function Set-OUs([array]$OUPaths,[string]$DC,[string]$RootOUName,[switch]$delete
             $ouIdentity = "OU=$ouname,$oupath"
             try {
                 Write-Host "[-] Deleting $ouIdentity"
-                #Remove-ADOrganizationalUnit -Identity $ouIdentity -Recursive -Confirm:$false
+                Remove-ADOrganizationalUnit -Identity $ouIdentity -Recursive -Confirm:$false
             }
             catch {
                 $msg = $_
@@ -132,7 +132,7 @@ function set-ADGroups ([array]$groupNames,[string]$userGroupsOU){
     foreach ($group in $groupNames){
         try {
             Write-Host "    [+] Creating $group"
-            # New-ADGroup -Name $group -GroupCategory Security -GroupScope DomainLocal -Path $userGroupsOU
+            New-ADGroup -Name $group -GroupCategory Security -GroupScope DomainLocal -Path $userGroupsOU
         }
         catch{
             $msg= $_
@@ -185,6 +185,16 @@ function set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
     $Tnames.Remove($user)
     # Get a random set of groups (between 1 and 3)
     $groups = @((Get-Random -InputObject $model.userGroupNames -Count (Get-Random -InputObject (1..3) -Count 1)))
+    # Get a random description
+    $AddDesc = Get-Random -InputObject $model.AdditionalDesc
+    # Get departement
+    foreach($outDept in $model.Depts){
+        if ($destOU -like "*$outDept*"){
+            $Dept = $outDept
+        }
+    }
+    # Build full desc
+    $fDesc = "[$Dept] $AddDesc"
     # Get user psw 
     $sPsw, $psw = Get-NewPassword -Nbr 12 -AllowedChars $charlist
     # define default values // Sanitize those values in a PROD env.
@@ -196,8 +206,8 @@ function set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
         # Expiration date is well defined
         if($expDate -ne $false){
             try {
-                 # New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate $expDate -ChangePasswordAtLogon $true -Enabled $true
-                 Write-Host "   [+] Creating user :$UPN - $expDate" -ForegroundColor Blue
+                New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate $expDate -ChangePasswordAtLogon $true -Enabled $true -Description $fDesc
+                Write-Host "   [+] Creating user :$UPN - $expDate // $fDesc" -ForegroundColor Blue
             }
             catch {
                 $msg = $_
@@ -208,8 +218,8 @@ function set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
         # Expiration date set to $false
         else{
             try {
-                 # New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -ChangePasswordAtLogon $true -Enabled $true
-                 Write-Host "   [+] Creating user :$UPN - $expDate" -ForegroundColor Blue
+                New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -ChangePasswordAtLogon $true -Enabled $true -Description $fDesc
+                Write-Host "   [+] Creating user :$UPN - $expDate // $fDesc" -ForegroundColor Blue
             }
             catch {
                 $msg = $_
@@ -222,8 +232,8 @@ function set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
     # Expired user (not disabled as AD doesn't disabled an expired user)
     else{
         try {
-            # New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate (Get-Date) -Enabled $true
-            Write-Host "   [+] Creating DISABLED user :$UPN" -ForegroundColor Cyan
+            New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate (Get-Date) -Enabled $true -Description $fDesc
+            Write-Host "   [+] Creating DISABLED user :$UPN // $fDesc" -ForegroundColor Cyan
         }
         catch {
             $msg = $_
@@ -248,6 +258,18 @@ function set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
 
 }
 
+function set-Manager ($userOUs) {
+    $managerOUs = @()
+    $managedOUs = @()
+    foreach ($ou in $userOUs){
+        if($ou -like "*manager*"){
+            $managerOUs += $ou
+            $managedOUs += $ou
+            $managedOUs += $ou.Replace("$($ou.Split(',')[0]),","") # adding parent ou to managed ous
+        }
+    }
+}
+
 # ---------------------
 # Zhu-li, do the thing:
 # ---------------------
@@ -265,7 +287,7 @@ if ($Action -eq 'Create'){
     Write-Host "[+] Creating AD Structure following $modelPath" -ForegroundColor Green
     # OUs
     Write-Host "[+] OUs:" -ForegroundColor Green
-    $allOUs = Set-OUs -OUPaths $model.CustomOUs -DC $model.DistNameDomain
+    $allOUs = Set-OUs -OUPaths $model.CustomOUs -RootOUName $model.RootOUName -DC $domainDistName
     foreach($ou in $allOUs){
         if ($ou -like "*user*" -and $ou -notlike "*Security groups*" -and $ou -notlike "*WAITING*" -and $ou -notlike "*DISABLED*"){
             $userOUs += $ou
@@ -280,6 +302,7 @@ if ($Action -eq 'Create'){
         Write-Host "[i] Processing $expType, expiration date is: $($expDefinitions.$expType)" -ForegroundColor Yellow
         foreach ($userOU in $userOUs){
             if ($userOU -like "*$expType*"){
+                Write-Host "    [+] Creating users in $userOU" -ForegroundColor Yellow
                 # Create n Active users with the definied expiration date
                 for($i=0; $i -lt $model.activeUsersPerOU; $i++){
                     ## Create user
@@ -304,7 +327,7 @@ if ($Action -eq 'Create'){
 elseif ($Action -eq 'Delete') {
     # Recursive delete _ROOT OU (everything unprotected from accidental deletion)
     Write-Host "[-] Deleting _ROOT recursively" -ForegroundColor Blue
-    Set-OUs -OUPaths $model.CustomOUs -DC $model.DistNameDomain -delete
+    $allOUs = Set-OUs -OUPaths $model.CustomOUs -RootOUName $model.RootOUName -DC $domainDistName -delete
 }
 
 elseif ($Action -eq 'Reset') {
@@ -312,13 +335,13 @@ elseif ($Action -eq 'Reset') {
     # 1. Delete
     ## Recusrive OU deletion
     Write-Host "[-] Deleting _ROOT OU recursively" -ForegroundColor Blue
-    $allOUs = Set-OUs -OUPaths $model.CustomOUs -DC $model.DistNameDomain -delete
+    $allOUs = Set-OUs -OUPaths $model.CustomOUs -RootOUName $model.RootOUName -DC $domainDistName -delete
 
     # 2. Create
     Write-Host "[+] Creating AD Structure following $modelPath" -ForegroundColor Green
     # OUs
     Write-Host "[+] OUs:" -ForegroundColor Green
-    $allOUs = Set-OUs -OUPaths $model.CustomOUs -DC $model.DistNameDomain
+    $allOUs = Set-OUs -OUPaths $model.CustomOUs -RootOUName $model.RootOUName -DC $domainDistName
     foreach($ou in $allOUs){
         if ($ou -like "*user*" -and $ou -notlike "*Security groups*" -and $ou -notlike "*WAITING*" -and $ou -notlike "*DISABLED*"){
             $userOUs += $ou
@@ -333,6 +356,7 @@ elseif ($Action -eq 'Reset') {
         Write-Host "[i] Processing $expType, expiration date is: $($expDefinitions.$expType)" -ForegroundColor Yellow
         foreach ($userOU in $userOUs){
             if ($userOU -like "*$expType*"){
+                Write-Host "    [+] Creating users in $userOU" -ForegroundColor Yellow
                 # Create n Active users with the definied expiration date
                 for($i=0; $i -lt $model.activeUsersPerOU; $i++){
                     ## Create user
@@ -356,7 +380,7 @@ elseif ($Action -eq 'Reset') {
 }
 
 else{
-    Write-Host "[!] No paremeter: see -help"
+    Write-Host "[!] No parameter: see -help"
 }
 
 
