@@ -2,8 +2,8 @@
 Purpose: Setup my AD structure.
 Switches
     -Create : Creation of OU/Groups/Users definied in ./data/* files.
-    -Delete : Purge the AD of created entries (OU/Groups/Users)
-    -Reset  : -Purge then -Create.
+    -Delete : Delete recursivly the custom OUs
+    -Reset  : -Delete then -Create.
 #>
 
 # PARAMETERS
@@ -17,7 +17,7 @@ $HelpTxt = @'
 Purpose: Setup my AD structure.
 Switches
     -Create : Creation of OU/Groups/Users definied in ./data/* files.
-    -Delete : Purge the AD of created entries (OU/Groups/Users)
+    -Delete : Delete recursivly the custom OUs
     -Reset  : -Delete then -Create.
 '@
 if ($help){
@@ -96,13 +96,13 @@ Function Set-OUs([array]$OUPaths,[string]$DC,[string]$RootOUName,[switch]$delete
             $ouname,$oupath = $ou.Split('/')[0],$ou.Split('/')[1]
             $ouIdentity = "OU=$ouname,$oupath"
             try {
-                Write-Host "[+] Creating OU=$ouname,$oupath"
+                Write-Host "    [+] Creating OU=$ouname,$oupath"
                 #New-ADOrganizationalUnit -Name "$ouname" -Path "$oupath" -ProtectedFromAccidentalDeletion $false
                 $OUIdentities += $ouIdentity
             }
             catch {
                 $msg = $_
-                Write-Host "[!] Error creating $ouIdentity" -ForegroundColor Red
+                Write-Host "    [!] Error creating $ouIdentity" -ForegroundColor Red
                 Write-Host $msg -ForegroundColor Red
             } 
         }  
@@ -132,7 +132,7 @@ function set-ADGroups ([array]$groupNames,[string]$userGroupsOU){
     foreach ($group in $groupNames){
         try {
             Write-Host "    [+] Creating $group"
-            New-ADGroup -Name $group -GroupCategory Security -GroupScope DomainLocal -Path $userGroupsOU
+            # New-ADGroup -Name $group -GroupCategory Security -GroupScope DomainLocal -Path $userGroupsOU
         }
         catch{
             $msg= $_
@@ -179,7 +179,14 @@ function Get-Times($userExpirations) {
 }
 
 # Active or Expired user creation, return SAM
-function set-NewADUser($domain, $destOU, $userNames, $groups, $expDate,$sPsw , [switch]$expired) {
+function set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {    
+    # Get a random name from .csv and remove it from the list
+    $userNames = Get-Random -InputObject $Tnames
+    $Tnames.Remove($user)
+    # Get a random set of groups (between 1 and 3)
+    $groups = @((Get-Random -InputObject $model.userGroupNames -Count (Get-Random -InputObject (1..3) -Count 1)))
+    # Get user psw 
+    $sPsw, $psw = Get-NewPassword -Nbr 12 -AllowedChars $charlist
     # define default values // Sanitize those values in a PROD env.
     $displayName = $userNames.firstName + " " + $userNames.lastName
     $SAM = ($userNames.firstName + "." + $userNames.lastName).toLower()
@@ -216,7 +223,7 @@ function set-NewADUser($domain, $destOU, $userNames, $groups, $expDate,$sPsw , [
     else{
         try {
             # New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate (Get-Date) -Enabled $true
-            Write-Host "   [+] Creating DISABLED user :$UPN" -ForegroundColor Yellow
+            Write-Host "   [+] Creating DISABLED user :$UPN" -ForegroundColor Cyan
         }
         catch {
             $msg = $_
@@ -229,7 +236,7 @@ function set-NewADUser($domain, $destOU, $userNames, $groups, $expDate,$sPsw , [
     foreach($group in $groups){
         try {
              # Add-ADGroupMember -Identity $group -Members $SAM
-             Write-Host "       [+] Adding user :$UPN to $group" -ForegroundColor DarkBlue
+             Write-Host "       [+] Adding user :$UPN to $group"
         }
         catch {
             $msg = $_
@@ -237,7 +244,7 @@ function set-NewADUser($domain, $destOU, $userNames, $groups, $expDate,$sPsw , [
             Write-Host $msg -ForegroundColor Red
         }
     }
-    return $SAM
+    return $SAM, $psw
 
 }
 
@@ -257,7 +264,7 @@ $expDefinitions = Get-Times($model.userExpirationTypes)
 if ($Action -eq 'Create'){
     Write-Host "[+] Creating AD Structure following $modelPath" -ForegroundColor Green
     # OUs
-    Write-Host "[+] OUs" -ForegroundColor Green
+    Write-Host "[+] OUs:" -ForegroundColor Green
     $allOUs = Set-OUs -OUPaths $model.CustomOUs -DC $model.DistNameDomain
     foreach($ou in $allOUs){
         if ($ou -like "*user*" -and $ou -notlike "*Security groups*" -and $ou -notlike "*WAITING*" -and $ou -notlike "*DISABLED*"){
@@ -265,7 +272,7 @@ if ($Action -eq 'Create'){
         }
     }
     # Security Groups 
-    Write-Host "[+] Security groups" -ForegroundColor Green
+    Write-Host "[+] Security groups:" -ForegroundColor Green
     set-ADGroups -groupNames $model.userGroupNames -userGroupsOU $model.userGroupOU
     # Users
     Write-Host "[+] Users:" -ForegroundColor Green
@@ -275,30 +282,15 @@ if ($Action -eq 'Create'){
             if ($userOU -like "*$expType*"){
                 # Create n Active users with the definied expiration date
                 for($i=0; $i -lt $model.activeUsersPerOU; $i++){
-                    ## Retrieve a random username from the list and pop it out
-                    $user = Get-Random -InputObject $Tnames
-                    $Tnames.Remove($user)
-                    ## Get a random set of groups (between 1 and 3)
-                    $groups = @((Get-Random -InputObject $model.userGroupNames -Count (Get-Random -InputObject (1..3) -Count 1)))
-                    ## Get user psw 
-                    $sPsw, $psw = Get-NewPassword -Nbr 12 -AllowedChars $charlist
                     ## Create user
-                    $SAM = set-NewADUser -domain $model.domain -destOU $userOU -userNames $user -groups $groups -expDate $($expDefinitions.$expType) -sPsw $sPsw
+                    $SAM,$psw = set-NewADUser -domain $model.domain -destOU $userOU -expDate $($expDefinitions.$expType)
                     ## Append new user:psw to logfile
                     Out-File -FilePath $logs -InputObject ($SAM + ":" + $psw) -Append
-            
                 }
                 # Create n Expired users with an expiration date as of now.
                 for($i=0; $i -lt $model.expiredUsersPerOU; $i++){
-                    ## Retrieve a random username from the list and pop it out
-                    $user = Get-Random -InputObject $Tnames
-                    $Tnames.Remove($user)
-                    ## Get user psw
-                    $sPsw, $psw = Get-NewPassword -Nbr 12 -AllowedChars $charlist
-                    ## Get a random set of groups (between 1 &nd 3)
-                    $groups = @((Get-Random -InputObject $model.userGroupNames -Count (Get-Random -InputObject (1..3) -Count 1)))
                     ## Create user
-                    $SAM = set-NewADUser -domain $model.domain -destOU $userOU -userNames $user -groups $groups -sPsw $sPsw -expired
+                    $SAM,$psw = set-NewADUser -domain $model.domain -destOU $userOU -expired
                     ## Append new user:psw to logfile
                     Out-File -FilePath $logs -InputObject ($SAM + ":" + $psw) -Append
                        
@@ -306,6 +298,7 @@ if ($Action -eq 'Create'){
             }
         }
     }
+    Out-File -FilePath $logs -InputObject "#----------------------------------#" -Append
 }
 
 elseif ($Action -eq 'Delete') {
@@ -324,7 +317,7 @@ elseif ($Action -eq 'Reset') {
     # 2. Create
     Write-Host "[+] Creating AD Structure following $modelPath" -ForegroundColor Green
     # OUs
-    Write-Host "[+] OUs" -ForegroundColor Green
+    Write-Host "[+] OUs:" -ForegroundColor Green
     $allOUs = Set-OUs -OUPaths $model.CustomOUs -DC $model.DistNameDomain
     foreach($ou in $allOUs){
         if ($ou -like "*user*" -and $ou -notlike "*Security groups*" -and $ou -notlike "*WAITING*" -and $ou -notlike "*DISABLED*"){
@@ -342,30 +335,16 @@ elseif ($Action -eq 'Reset') {
             if ($userOU -like "*$expType*"){
                 # Create n Active users with the definied expiration date
                 for($i=0; $i -lt $model.activeUsersPerOU; $i++){
-                    ## Retrieve a random username from the list and pop it out
-                    $user = Get-Random -InputObject $Tnames
-                    $Tnames.Remove($user)
-                    ## Get a random set of groups (between 1 and 3)
-                    $groups = @((Get-Random -InputObject $model.userGroupNames -Count (Get-Random -InputObject (1..3) -Count 1)))
-                    ## Get user psw 
-                    $sPsw, $psw = Get-NewPassword -Nbr 12 -AllowedChars $charlist
                     ## Create user
-                    $SAM = set-NewADUser -domain $model.domain -destOU $userOU -userNames $user -groups $groups -expDate $($expDefinitions.$expType) -sPsw $sPsw
+                    $SAM,$psw = set-NewADUser -domain $model.domain -destOU $userOU -expDate $($expDefinitions.$expType)
                     ## Append new user:psw to logfile
                     Out-File -FilePath $logs -InputObject ($SAM + ":" + $psw) -Append
             
                 }
                 # Create n Expired users with an expiration date as of now.
                 for($i=0; $i -lt $model.expiredUsersPerOU; $i++){
-                    ## Retrieve a random username from the list and pop it out
-                    $user = Get-Random -InputObject $Tnames
-                    $Tnames.Remove($user)
-                    ## Get user psw
-                    $sPsw, $psw = Get-NewPassword -Nbr 12 -AllowedChars $charlist
-                    ## Get a random set of groups (between 1 &nd 3)
-                    $groups = @((Get-Random -InputObject $model.userGroupNames -Count (Get-Random -InputObject (1..3) -Count 1)))
                     ## Create user
-                    $SAM = set-NewADUser -domain $model.domain -destOU $userOU -userNames $user -groups $groups -sPsw $sPsw -expired
+                    $SAM,$psw = set-NewADUser -domain $model.domain -destOU $userOU -expired
                     ## Append new user:psw to logfile
                     Out-File -FilePath $logs -InputObject ($SAM + ":" + $psw) -Append
                        
@@ -373,6 +352,7 @@ elseif ($Action -eq 'Reset') {
             }
         }
     }
+    Out-File -FilePath $logs -InputObject "#----------------------------------#" -Append
 }
 
 else{

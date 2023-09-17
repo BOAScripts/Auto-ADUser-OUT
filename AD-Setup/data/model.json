@@ -25,6 +25,26 @@
         "_ROOT/Users/WAITING users",
         "_ROOT/DISABLED users"
     ],
+    "Depts": [
+        "Consultants 1",
+        "Consultants 2",
+        "Finance",
+        "HR",
+        "ICT",
+        "Sales"
+    ],
+    "Additional Desc":[
+        "Random desc. 1",
+        "Random desc. 2",
+        "Random desc. 3",
+        "Random desc. 4",
+        "Random desc. 5",
+        "Random desc. 6",
+        "Random desc. 7",
+        "Random desc. 8",
+        "Random desc. 9",
+        "Random desc. 10"
+    ],
     "userGroupOU": "OU=User groups,OU=Security Groups,OU=_ROOT,DC=boa,DC=local",
     "userGroupNames": [
         "TestGroup1",
