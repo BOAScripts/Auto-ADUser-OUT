@@ -41,6 +41,9 @@ Enter-PSSession $Sess
 
 - There is only 1000 user names in the .csv, so `($model.activeUsersPerOU + $model.expiredUsersPerOU) * $userOUs.Length` cannot be more than 1000 => $userOUs are OUs where there is "user" in the distinguished name but not "security groups","WAITING","DISABLED".
 
+# Issues
+
+- users in Internal & External OU precisely doesn't have a department in their description.
 
 # Copy below in project readme, not in AD-Setup
 
