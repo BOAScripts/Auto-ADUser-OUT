@@ -1,9 +1,9 @@
 <#
 Purpose: Setup my AD structure.
 Switches
-    -Create : Creation of OU/Groups/Users definied in ./data/* files.
-    -Delete : Delete recursivly the custom OUs
-    -Reset  : -Delete then -Create.
+    -Action Create : Creation of OU/Groups/Users defined in ./data/model.json.
+    -Action Delete : Delete recursivly everything that is unprotected in the RootOUName
+    -Action Reset  : Delete then Create.
 #>
 
 # PARAMETERS
@@ -14,11 +14,11 @@ Param(
 # VARS
 ## Static
 $HelpTxt = @'
-Purpose: Setup my AD structure.
-Switches
-    -Create : Creation of OU/Groups/Users definied in ./data/* files.
-    -Delete : Delete recursivly the custom OUs
-    -Reset  : -Delete then -Create.
+Purpose     : Setup my AD structure.
+Switches    :
+    -Action Create : Creation of OU/Groups/Users defined in ./data/model.json.
+    -Action Delete : Delete recursivly everything that is unprotected in the RootOUName
+    -Action Reset  : Delete then Create.
 '@
 if ($help){
     Write-Host $HelpTxt
@@ -295,7 +295,7 @@ if ($Action -eq 'Create'){
     }
     # Security Groups 
     Write-Host "[+] Security groups:" -ForegroundColor Green
-    set-ADGroups -groupNames $model.userGroupNames -userGroupsOU $model.userGroupOU
+    set-ADGroups -groupNames $model.userGroupNames -userGroupsOU $model.userGroupsOU
     # Users
     Write-Host "[+] Users:" -ForegroundColor Green
     foreach($expType in $expDefinitions.Keys){
@@ -326,7 +326,7 @@ if ($Action -eq 'Create'){
 
 elseif ($Action -eq 'Delete') {
     # Recursive delete _ROOT OU (everything unprotected from accidental deletion)
-    Write-Host "[-] Deleting _ROOT recursively" -ForegroundColor Blue
+    Write-Host "[-] Deleting $($model.RootOUName) recursively" -ForegroundColor Blue
     $allOUs = Set-OUs -OUPaths $model.CustomOUs -RootOUName $model.RootOUName -DC $domainDistName -delete
 }
 
@@ -349,7 +349,7 @@ elseif ($Action -eq 'Reset') {
     }
     # Security Groups 
     Write-Host "[+] Security groups" -ForegroundColor Green
-    set-ADGroups -groupNames $model.userGroupNames -userGroupsOU $model.userGroupOU
+    set-ADGroups -groupNames $model.userGroupNames -userGroupsOU $model.userGroupsOU
     # Users
     Write-Host "[+] Users:" -ForegroundColor Green
     foreach($expType in $expDefinitions.Keys){
