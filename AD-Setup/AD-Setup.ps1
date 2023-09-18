@@ -188,13 +188,17 @@ function Set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
     # Get a random description
     $AddDesc = Get-Random -InputObject $model.AdditionalDesc
     # Get departement
-    foreach($outDept in $model.Depts){
-        if ($destOU -like "*$outDept*"){
-            $Dept = $outDept
+    $HashDepts = $model.TestDepts
+    foreach($outDept in $HashDepts.PSObject.Properties){
+        $tempDeptName = $outDept.Name
+        $tempDeptShortName = $outDept.Value
+        if ($destOU -like "*$tempDeptName*"){
+            $Dept = $DeptName
+            $sDept = $tempDeptShortName
         }
     }
     # Build full desc
-    $fDesc = "[$Dept] $AddDesc"
+    $fDesc = "[$sDept] $AddDesc"
     # Get user psw 
     $sPsw, $psw = Get-NewPassword -Nbr 12 -AllowedChars $charlist
     # define default values // Sanitize those values in a PROD env.
@@ -206,7 +210,7 @@ function Set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
         # Expiration date is well defined
         if($expDate -ne $false){
             try {
-                New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate $expDate -ChangePasswordAtLogon $true -Enabled $true -Description $fDesc
+                New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate $expDate -ChangePasswordAtLogon $true -Enabled $true -Description $fDesc -Department $Dept
                 Write-Host "   [+] Creating user :$UPN - $expDate // $fDesc" -ForegroundColor Blue
             }
             catch {
@@ -218,7 +222,7 @@ function Set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
         # Expiration date set to $false
         else{
             try {
-                New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -ChangePasswordAtLogon $true -Enabled $true -Description $fDesc
+                New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -ChangePasswordAtLogon $true -Enabled $true -Description $fDesc -Department $Dept
                 Write-Host "   [+] Creating user :$UPN - $expDate // $fDesc" -ForegroundColor Blue
             }
             catch {
@@ -232,7 +236,7 @@ function Set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
     # Expired user (not disabled as AD doesn't disabled an expired user)
     else{
         try {
-            New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate (Get-Date) -Enabled $true -Description $fDesc
+            New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate (Get-Date) -Enabled $true -Description $fDesc -Department $Dept
             Write-Host "   [+] Creating DISABLED user :$UPN // $fDesc" -ForegroundColor Cyan
         }
         catch {

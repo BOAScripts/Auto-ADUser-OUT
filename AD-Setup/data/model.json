@@ -25,6 +25,15 @@
         "_ROOT/Users/WAITING users",
         "_ROOT/DISABLED users"
     ],
+    "TestDepts": {
+        "Internal":"INT",
+        "External":"EXT",
+        "Consultants":"CON",
+        "Finance":"FIN",
+        "HR":"HR",
+        "ICT":"ICT",
+        "Sales":"SAL"
+    },
     "Depts": [
         "Internal",
         "External",
