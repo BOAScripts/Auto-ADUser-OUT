@@ -26,6 +26,8 @@
         "_ROOT/DISABLED users"
     ],
     "Depts": [
+        "Internal",
+        "External",
         "Consultants 1",
         "Consultants 2",
         "Finance",
@@ -46,7 +48,7 @@
         "Always late",
         "Have his/her own agenda"
     ],
-    "userGroupOU": "OU=User groups,OU=Security Groups,OU=_ROOT,DC=boa,DC=local",
+    "userGroupsOU": "OU=User groups,OU=Security Groups,OU=_ROOT,DC=boa,DC=local",
     "userGroupNames": [
         "TestGroup1",
         "TestGroup2",
