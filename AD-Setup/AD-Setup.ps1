@@ -61,7 +61,7 @@ Function Get-NewPassword([int32]$Nbr,[array]$AllowedChars){
 }
 
 # Return Distinguished name for domain and ROOT ou
-function get-DomainNRoot($domain,$RootOUName){
+function Get-DomainNRoot($domain,$RootOUName){
     $domainDistName = ""
     foreach ($i in $domain.Split('.')){
         $sSub = "DC=$i,"
@@ -128,7 +128,7 @@ Function Set-OUs([array]$OUPaths,[string]$DC,[string]$RootOUName,[switch]$delete
     return $OUIdentities
 }
 
-function set-ADGroups ([array]$groupNames,[string]$userGroupsOU){
+function Set-ADGroups ([array]$groupNames,[string]$userGroupsOU){
     foreach ($group in $groupNames){
         try {
             Write-Host "    [+] Creating $group"
@@ -179,7 +179,7 @@ function Get-Times($userExpirations) {
 }
 
 # Active or Expired user creation, return SAM
-function set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {    
+function Set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {    
     # Get a random name from .csv and remove it from the list
     $userNames = Get-Random -InputObject $Tnames
     $Tnames.Remove($userNames)
@@ -245,7 +245,7 @@ function set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
     # Add user to his groups
     foreach($group in $groups){
         try {
-             # Add-ADGroupMember -Identity $group -Members $SAM
+             Add-ADGroupMember -Identity $group -Members $SAM
              Write-Host "       [+] Adding user :$UPN to $group"
         }
         catch {
@@ -258,17 +258,18 @@ function set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
 
 }
 
-function set-Manager ($userOUs) {
-    $managerOUs = @()
-    $managedOUs = @()
-    foreach ($ou in $userOUs){
-        if($ou -like "*manager*"){
-            $managerOUs += $ou
-            $managedOUs += $ou
-            $managedOUs += $ou.Replace("$($ou.Split(',')[0]),","") # adding parent ou to managed ous
-        }
-    }
-}
+# function set-Manager ($userOUs) {
+#     $managerOUs = @()
+#     $managedOUs = @()
+#     foreach ($ou in $userOUs){
+#         if($ou -like "*manager*"){
+#             $managerOUs += $ou
+#             $managedOUs += $ou
+#             $managedOUs += $ou.Replace("$($ou.Split(',')[0]),","") # adding parent ou to managed ous
+#             $manager = Get-Random -InputObject (Get-ADUser -Filter * -SearchBase $ou | Select-Object UserPrincipalName)
+#         }
+#     }
+# }
 
 # ---------------------
 # Zhu-li, do the thing:
