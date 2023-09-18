@@ -193,7 +193,7 @@ function Set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
         $tempDeptName = $outDept.Name
         $tempDeptShortName = $outDept.Value
         if ($destOU -like "*$tempDeptName*"){
-            $Dept = $DeptName
+            $Dept = $tempDeptName
             $sDept = $tempDeptShortName
         }
     }
