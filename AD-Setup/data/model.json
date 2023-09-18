@@ -25,7 +25,7 @@
         "_ROOT/Users/WAITING users",
         "_ROOT/DISABLED users"
     ],
-    "TestDepts": {
+    "Depts": {
         "Internal":"INT",
         "External":"EXT",
         "Consultants":"CON",
@@ -34,16 +34,6 @@
         "ICT":"ICT",
         "Sales":"SAL"
     },
-    "Depts": [
-        "Internal",
-        "External",
-        "Consultants 1",
-        "Consultants 2",
-        "Finance",
-        "HR",
-        "ICT",
-        "Sales"
-    ],
     "AdditionalDesc":[
         "The cool kid",
         "The useless one",

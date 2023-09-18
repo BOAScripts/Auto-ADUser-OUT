@@ -115,7 +115,7 @@ Function Set-OUs([array]$OUPaths,[string]$DC,[string]$RootOUName,[switch]$delete
             $ouname,$oupath = $ou.Split('/')[0],$ou.Split('/')[1]
             $ouIdentity = "OU=$ouname,$oupath"
             try {
-                Write-Host "[-] Deleting $ouIdentity"
+                Write-Host "    [-] Deleting $ouIdentity"
                 Remove-ADOrganizationalUnit -Identity $ouIdentity -Recursive -Confirm:$false
             }
             catch {
@@ -188,7 +188,7 @@ function Set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
     # Get a random description
     $AddDesc = Get-Random -InputObject $model.AdditionalDesc
     # Get departement
-    $HashDepts = $model.TestDepts
+    $HashDepts = $model.Depts
     foreach($outDept in $HashDepts.PSObject.Properties){
         $tempDeptName = $outDept.Name
         $tempDeptShortName = $outDept.Value
