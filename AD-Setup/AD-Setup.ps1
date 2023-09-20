@@ -375,10 +375,10 @@ elseif ($Action -eq 'Reset') {
     # Users
     Write-Host "[+] Users:" -ForegroundColor Green
     foreach($expType in $expDefinitions.Keys){
-        Write-Host "[i] Processing $expType, expiration date is: $($expDefinitions.$expType)" -ForegroundColor Yellow
+        Write-Host "    [i] Processing $expType, expiration date is: $($expDefinitions.$expType)" -ForegroundColor Blue
         foreach ($userOU in $userOUs){
             if ($userOU -like "*$expType*"){
-                Write-Host "    [+] Creating users in $userOU" -ForegroundColor Yellow
+                Write-Host "        [+] Creating users in $userOU" -ForegroundColor Yellow
                 # Create n Active users with the definied expiration date
                 for($i=0; $i -lt $model.activeUsersPerOU; $i++){
                     ## Create user
