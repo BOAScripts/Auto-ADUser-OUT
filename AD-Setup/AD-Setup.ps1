@@ -211,7 +211,7 @@ function Set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
         if($expDate -ne $false){
             try {
                 New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate $expDate -ChangePasswordAtLogon $true -Enabled $true -Description $fDesc -Department $Dept
-                Write-Host "   [+] Creating user :$UPN - $expDate // $fDesc" -ForegroundColor Blue
+                # Write-Host "   [+] Creating user :$UPN - $expDate // $fDesc" -ForegroundColor Blue
             }
             catch {
                 $msg = $_
@@ -223,7 +223,7 @@ function Set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
         else{
             try {
                 New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -ChangePasswordAtLogon $true -Enabled $true -Description $fDesc -Department $Dept
-                Write-Host "   [+] Creating user :$UPN - $expDate // $fDesc" -ForegroundColor Blue
+                # Write-Host "   [+] Creating user :$UPN - $expDate // $fDesc" -ForegroundColor Blue
             }
             catch {
                 $msg = $_
@@ -237,7 +237,7 @@ function Set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
     else{
         try {
             New-ADUser -Path $destOU -Name $displayName -DisplayName $displayName -GivenName $userNames.firstName -Surname $userNames.lastName -SamAccountName $SAM -UserPrincipalName $UPN -EmailAddress $UPN -AccountPassword $sPsw -AccountExpirationDate (Get-Date) -Enabled $true -Description $fDesc -Department $Dept
-            Write-Host "   [+] Creating DISABLED user :$UPN // $fDesc" -ForegroundColor Cyan
+            # Write-Host "   [+] Creating DISABLED user :$UPN // $fDesc" -ForegroundColor Cyan
         }
         catch {
             $msg = $_
@@ -250,7 +250,7 @@ function Set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
     foreach($group in $groups){
         try {
              Add-ADGroupMember -Identity $group -Members $SAM
-             Write-Host "       [+] Adding user :$UPN to $group"
+             # Write-Host "       [+] Adding user :$UPN to $group"
         }
         catch {
             $msg = $_
@@ -340,7 +340,9 @@ if ($Action -eq 'Create'){
     # Managers
     Write-Host "[+] Setting up the managers" -ForegroundColor Green
     $managersList = set-Managers -userOUs $userOUs
-    Write-Host "    [i] Managers are $managersList"
+    foreach ($manager in $managersList){
+        Write-Host "    [i] $($manager.split(":")[0]) -> $($manager.split(":")[1])"
+    }
     Out-File -FilePath $logs -InputObject "#----------------------------------#" -Append
 }
 
@@ -399,7 +401,9 @@ elseif ($Action -eq 'Reset') {
     # Managers
     Write-Host "[+] Setting up the managers" -ForegroundColor Green
     $managersList = set-Managers -userOUs $userOUs
-    Write-Host "    [i] Managers are $managersList"
+    foreach ($manager in $managersList){
+        Write-Host "    [i] $($manager.split(":")[0]) -> $($manager.split(":")[1])"
+    }
     Out-File -FilePath $logs -InputObject "#----------------------------------#" -Append
 }
 
