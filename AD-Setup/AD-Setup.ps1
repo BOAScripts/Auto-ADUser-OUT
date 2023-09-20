@@ -120,7 +120,7 @@ Function Set-OUs([array]$OUPaths,[string]$DC,[string]$RootOUName,[switch]$delete
             }
             catch {
                 $msg = $_
-                Write-Host "[!] Error deleting $ouIdentity" -ForegroundColor Red
+                Write-Host "    [!] Error deleting $ouIdentity" -ForegroundColor Red
                 Write-Host $msg -ForegroundColor Red
             }   
         }
@@ -262,18 +262,29 @@ function Set-NewADUser($domain, $destOU, $expDate, [switch]$expired) {
 
 }
 
-# function set-Manager ($userOUs) {
-#     $managerOUs = @()
-#     $managedOUs = @()
-#     foreach ($ou in $userOUs){
-#         if($ou -like "*manager*"){
-#             $managerOUs += $ou
-#             $managedOUs += $ou
-#             $managedOUs += $ou.Replace("$($ou.Split(',')[0]),","") # adding parent ou to managed ous
-#             $manager = Get-Random -InputObject (Get-ADUser -Filter * -SearchBase $ou | Select-Object UserPrincipalName)
-#         }
-#     }
-# }
+function set-Managers ($userOUs) {
+    $retVal = @() # "managerSAM:ShortDept"
+    foreach ($ou in $userOUs){
+        $managedUsers = @()
+        if($ou -like "*manager*"){
+            $managedou = $ou.replace("$($ou.split(',')[0]),","") # Setting parent ou as the managed ou
+            $managerSAM = (get-random -inputobject (get-aduser -filter * -searchbase $ou | select-object SAMAccountName)).SAMAccountName
+            # Write-Host $managerSAM
+            $managedUsers += (get-aduser -Filter * -SearchBase $managedou | Select-Object SAMAccountName).SAMAccountName | Where-Object {$_ -ne $managerSAM} # all users in parent/childs ou except the manager
+            # Write-Host "$($managedUsers.length) $managedUsers"
+            # Modify manager desscription (adding [N+1] somewhere in desc.)
+            $tempDesc = (Get-ADUser $managerSAM -Properties Description | Select-Object Description).Description
+            $tempDesc = $tempDesc.Split(" ")[0] + " [N+1] " + $tempDesc.Split(" ")[1..$tempDesc.Split(" ").Length]
+            Set-ADUser $managerSAM -Description $tempDesc
+            # Set the manager for all managed users
+            foreach ($usr in $managedUsers){
+                Set-ADUser $usr -Manager $managerSAM
+            }
+            $retval += ($managerSAM + ":" + $tempDesc.Split(" ")[0])
+        } 
+    }
+    return $retVal   
+}
 
 # ---------------------
 # Zhu-li, do the thing:
@@ -326,6 +337,10 @@ if ($Action -eq 'Create'){
             }
         }
     }
+    # Managers
+    Write-Host "[+] Setting up the managers" -ForegroundColor Green
+    $managersList = set-Managers -userOUs $userOUs
+    Write-Host "    [i] Managers are $managersList"
     Out-File -FilePath $logs -InputObject "#----------------------------------#" -Append
 }
 
@@ -381,6 +396,10 @@ elseif ($Action -eq 'Reset') {
             }
         }
     }
+    # Managers
+    Write-Host "[+] Setting up the managers" -ForegroundColor Green
+    $managersList = set-Managers -userOUs $userOUs
+    Write-Host "    [i] Managers are $managersList"
     Out-File -FilePath $logs -InputObject "#----------------------------------#" -Append
 }
 
